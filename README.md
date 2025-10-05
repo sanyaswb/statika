@@ -5,3 +5,5 @@
 3. перекинь в мікротік у files
 4. відкрий New Terminal
 5. пропиши команду import (назва файлу).
+
+Відкрити сайт - [https://sanyaswb.github.io/statika/]
