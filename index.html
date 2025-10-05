@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+<head>
+  <meta charset="UTF-8">
+  <title>Генератор DHCP Lease</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      width: 500px;
+      margin: auto;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+    label {
+      display: block;
+      margin-top: 10px;
+      font-weight: bold;
+    }
+    input {
+      width: 100%;
+      padding: 5px;
+      margin-top: 5px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+    button {
+      margin-top: 15px;
+      padding: 7px 12px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .add-btn {
+      background: #4CAF50;
+      color: white;
+    }
+    .save-btn {
+      background: #2196F3;
+      color: white;
+      margin-left: 10px;
+    }
+    .remove-btn {
+      background: #f44336;
+      color: white;
+      margin-left: 10px;
+      font-size: 12px;
+      padding: 3px 7px;
+    }
+    .output {
+      background: #eee;
+      padding: 10px;
+      margin-top: 20px;
+      border-radius: 5px;
+      max-height: 250px;
+      overflow-y: auto;
+      font-family: monospace;
+    }
+    .line {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 3px 0;
+    }
+    .line span {
+      flex: 1;
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h3>DHCP Lease Generator</h3>
+    
+    <label>Введіть IP:</label>
+    <input type="text" id="ip" placeholder="192.168.10.22">
+
+    <label>Введіть коментар:</label>
+    <input type="text" id="comment" placeholder="коментар">
+
+    <label>Введіть MAC:</label>
+    <input type="text" id="mac" placeholder="B4:19:74:DC:EA:1F">
+
+    <label>Введіть сервер:</label>
+    <input type="text" id="server" placeholder="server10">
+
+    <div>
+      <button class="add-btn" onclick="addLine()">+ Додати</button>
+      <button class="save-btn" onclick="saveFile()">Зберегти .txt</button>
+    </div>
+
+    <div class="output" id="output">
+      <div class="line"><span>/ip dhcp-server lease</span></div>
+    </div>
+  </div>
+
+  <script>
+    let lines = ["/ip dhcp-server lease"];
+
+    function renderOutput() {
+      const output = document.getElementById("output");
+      output.innerHTML = ""; 
+      lines.forEach((line, index) => {
+        const div = document.createElement("div");
+        div.className = "line";
+
+        const span = document.createElement("span");
+        span.textContent = line;
+
+        div.appendChild(span);
+
+        // перший рядок (/ip dhcp...) не можна видалити
+        if (index !== 0) {
+          const btn = document.createElement("button");
+          btn.className = "remove-btn";
+          btn.textContent = "[-]";
+          btn.onclick = () => removeLine(index);
+          div.appendChild(btn);
+        }
+
+        output.appendChild(div);
+      });
+    }
+
+    function addLine() {
+      const ip = document.getElementById("ip").value.trim();
+      const comment = document.getElementById("comment").value.trim();
+      const mac = document.getElementById("mac").value.trim();
+      const server = document.getElementById("server").value.trim();
+
+      if (!ip || !comment || !mac || !server) {
+        alert("Будь ласка, заповніть всі поля!");
+        return;
+      }
+
+      const line = `add address=${ip} comment="==${comment}==" mac-address=${mac} server=${server}`;
+      lines.push(line);
+
+      renderOutput();
+
+      // очищення полів
+      document.getElementById("ip").value = "";
+      document.getElementById("comment").value = "";
+      document.getElementById("mac").value = "";
+      document.getElementById("server").value = "";
+    }
+
+    function removeLine(index) {
+      lines.splice(index, 1);
+      renderOutput();
+    }
+
+    function saveFile() {
+      const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "dhcp_leases.txt";
+      a.click();
+    }
+
+    // показати стартовий рядок
+    renderOutput();
+  </script>
+</body>
+</html>
