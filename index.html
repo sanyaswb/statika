@@ -77,6 +77,13 @@
     .status.error {
       color: #b00020;
     }
+    .ip-preview {
+      margin-top: 5px;
+      font-size: 14px;
+    }
+    .ip-preview.error {
+      color: #b00020;
+    }
     #mac-list {
       margin-top: 10px;
       max-height: 180px;
@@ -115,7 +122,8 @@
     <h3>DHCP Lease Generator</h3>
 
     <label for="ip">Введіть IP:</label>
-    <input type="text" id="ip" placeholder="192.168.10.22">
+    <input type="text" id="ip" placeholder="192.168.10.22" oninput="updateIpPreview()">
+    <div id="ip-preview" class="ip-preview" aria-live="polite"></div>
 
     <label for="comment">Введіть коментар:</label>
     <input type="text" id="comment" placeholder="коментар">
@@ -197,6 +205,25 @@
       ].join(".");
     }
 
+    function updateIpPreview() {
+      const preview = document.getElementById("ip-preview");
+      preview.textContent = "";
+      preview.classList.remove("error");
+      if (!importedMacs.length) return;
+      const ip = document.getElementById("ip").value.trim();
+      if (!ip) {
+        preview.textContent = `Введіть першу IP-адресу для ${importedMacs.length} MAC-адрес.`;
+        return;
+      }
+      const start = parseIpv4(ip);
+      if (start === null || start + importedMacs.length - 1 > 0xFFFFFFFF) {
+        preview.textContent = "Введіть коректну початкову IP-адресу.";
+        preview.classList.add("error");
+        return;
+      }
+      preview.textContent = `Діапазон для ${importedMacs.length} MAC-адрес: ${formatIpv4(start)}–${formatIpv4(start + importedMacs.length - 1)}.`;
+    }
+
     function leaseLine(ip, comment, mac, server) {
       return `add address=${ip} comment="==${comment}==" mac-address=${mac} server=${server}`;
     }
@@ -247,9 +274,10 @@
       const macInput = document.getElementById("mac");
       macInput.value = `Знайдено ${macs.length} MAC-адрес`;
       macInput.readOnly = true;
-      document.getElementById("ip").placeholder = "192.168.10.2-192.168.11.50";
+      document.getElementById("ip").placeholder = "192.168.10.2";
       document.querySelector(".add-btn").textContent = "Згенерувати";
-      setStatus(`Імпортовано ${macs.length} MAC-адрес. Введіть діапазон із щонайменше ${macs.length} IP-адрес.`);
+      setStatus(`Імпортовано ${macs.length} MAC-адрес. Введіть тільки першу IP-адресу.`);
+      updateIpPreview();
     }
 
     function renderOutput() {
@@ -289,22 +317,21 @@
       }
 
       if (importedMacs.length) {
-        const range = ip.split("-").map(part => part.trim());
-        const start = range.length === 2 ? parseIpv4(range[0]) : null;
-        const end = range.length === 2 ? parseIpv4(range[1]) : null;
-        if (start === null || end === null || end < start) {
-          setStatus("Введіть коректний діапазон IP, наприклад 192.168.10.2-192.168.11.50.", true);
+        const start = parseIpv4(ip);
+        if (start === null) {
+          setStatus("Введіть коректну початкову IP-адресу, наприклад 192.168.10.2.", true);
           return;
         }
-        if (end - start + 1 < importedMacs.length) {
-          setStatus(`У діапазоні замало IP-адрес: потрібно ${importedMacs.length}, доступно ${end - start + 1}.`, true);
+        const last = start + importedMacs.length - 1;
+        if (last > 0xFFFFFFFF) {
+          setStatus("Для всіх MAC-адрес не вистачає адрес IPv4 після вказаного IP.", true);
           return;
         }
         lines = [header];
         importedMacs.forEach((address, index) => {
           lines.push(leaseLine(formatIpv4(start + index), comment, address, server));
         });
-        setStatus(`Згенеровано ${importedMacs.length} записів: ${formatIpv4(start)}-${formatIpv4(start + importedMacs.length - 1)}.`);
+        setStatus(`Згенеровано ${importedMacs.length} записів: ${formatIpv4(start)}-${formatIpv4(last)}.`);
       } else {
         if (parseIpv4(ip) === null || !/^[0-9a-f]{2}(?::[0-9a-f]{2}){5}$/i.test(mac)) {
           setStatus("Введіть коректні IP та MAC-адресу.", true);
@@ -328,6 +355,7 @@
       document.getElementById("ip").placeholder = "192.168.10.22";
       document.querySelector(".add-btn").textContent = "+ Додати";
       renderMacList();
+      updateIpPreview();
       setStatus("");
     }
 
