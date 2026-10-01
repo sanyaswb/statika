@@ -19,6 +19,8 @@
       box-sizing: border-box;
       margin: auto;
       box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+      position: relative;
+      z-index: 1;
     }
     label {
       display: block;
@@ -32,6 +34,65 @@
       margin-top: 5px;
       border: 1px solid #ccc;
       border-radius: 5px;
+    }
+    .comment-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 10px;
+    }
+    .comment-row > label {
+      margin-top: 0;
+    }
+    .original-comment-option {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      margin: 0;
+      font-size: 13px;
+      font-weight: normal;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .original-comment-option input {
+      width: auto;
+      margin: 0;
+      padding: 0;
+      cursor: inherit;
+    }
+    .original-comment-option:has(input:disabled) {
+      color: #777;
+      cursor: help;
+    }
+    #comment:disabled {
+      background: #eee;
+    }
+    .missing-comment-dialog {
+      width: min(400px, calc(100% - 40px));
+      box-sizing: border-box;
+      padding: 20px;
+      border: 0;
+      border-radius: 10px;
+      box-shadow: 0 12px 35px rgba(0,0,0,0.25);
+    }
+    .missing-comment-dialog::backdrop {
+      background: rgba(0,0,0,0.35);
+    }
+    .missing-comment-dialog h3 {
+      margin: 0;
+    }
+    .dialog-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .dialog-actions button {
+      margin-top: 15px;
+    }
+    .dialog-confirm {
+      background: #4CAF50;
+      color: white;
     }
     button {
       margin-top: 15px;
@@ -115,6 +176,105 @@
       flex: 1;
       word-break: break-all;
     }
+    .feedback-card {
+      margin-top: 20px;
+    }
+    .feedback-card h3 {
+      margin-top: 0;
+    }
+    .rating-field {
+      border: 0;
+      padding: 0;
+      margin: 0;
+    }
+    .rating-field legend {
+      font-weight: bold;
+    }
+    .stars {
+      display: flex;
+      gap: 4px;
+      margin-top: 6px;
+    }
+    .star-choice {
+      display: inline-flex;
+      position: relative;
+      margin: 0;
+      cursor: pointer;
+    }
+    .star-choice input {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+    .star-icon {
+      color: #aaa;
+      font-size: 34px;
+      line-height: 1;
+      transition: color 150ms ease, transform 150ms ease;
+    }
+    .star-choice.active .star-icon {
+      color: #f6b900;
+      transform: scale(1.08);
+    }
+    .star-choice input:focus-visible + .star-icon {
+      outline: 2px solid #2196F3;
+      outline-offset: 3px;
+      border-radius: 3px;
+    }
+    .feedback-card textarea {
+      display: block;
+      width: 100%;
+      box-sizing: border-box;
+      min-height: 80px;
+      padding: 8px;
+      margin-top: 5px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      resize: vertical;
+      font: inherit;
+    }
+    .feedback-submit {
+      background: #673ab7;
+      color: white;
+    }
+    .feedback-message {
+      min-height: 20px;
+      margin: 10px 0 0;
+    }
+    .comments-layer {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+    }
+    .comments-layer.mobile {
+      position: relative;
+      inset: auto;
+      width: 100%;
+      max-width: 500px;
+      margin: 12px auto 0;
+    }
+    .floating-comment {
+      position: absolute;
+      box-sizing: border-box;
+      padding: 12px 14px;
+      border-radius: 12px;
+      box-shadow: 0 5px 16px rgba(0,0,0,0.16);
+      overflow-wrap: anywhere;
+      transform: rotate(var(--tilt));
+    }
+    .floating-comment .note-stars {
+      color: #805600;
+      letter-spacing: 2px;
+    }
+    .floating-comment p {
+      margin: 6px 0 0;
+      white-space: pre-wrap;
+    }
   </style>
 </head>
 <body>
@@ -125,7 +285,13 @@
     <input type="text" id="ip" placeholder="192.168.10.22" oninput="updateIpPreview()">
     <div id="ip-preview" class="ip-preview" aria-live="polite"></div>
 
-    <label for="comment">Введіть коментар:</label>
+    <div class="comment-row">
+      <label for="comment">Введіть коментар:</label>
+      <label class="original-comment-option" id="original-comment-option" title="коментарів не знайдено">
+        <input type="checkbox" id="preserve-comments" title="коментарів не знайдено" disabled onchange="toggleOriginalComments()">
+        <span>Оригінальні з файлу</span>
+      </label>
+    </div>
     <input type="text" id="comment" placeholder="коментар">
 
     <label for="mac">Введіть MAC:</label>
@@ -157,11 +323,46 @@
     </div>
   </div>
 
+  <dialog id="missing-comment-dialog" class="missing-comment-dialog" aria-labelledby="missing-comment-title" aria-describedby="missing-comment-count">
+    <form id="missing-comment-form">
+      <h3 id="missing-comment-title">Назва для записів без коментаря</h3>
+      <p id="missing-comment-count"></p>
+      <label for="default-comment-name">Введіть назву:</label>
+      <input id="default-comment-name" type="text" maxlength="80" required>
+      <div class="dialog-actions">
+        <button type="button" id="cancel-default-comment">Скасувати</button>
+        <button type="submit" class="dialog-confirm">Зберегти назву</button>
+      </div>
+    </form>
+  </dialog>
+
+  <section class="container feedback-card" id="feedback" aria-labelledby="feedback-title">
+    <h3 id="feedback-title">Оцініть програму</h3>
+    <form id="feedback-form">
+      <fieldset class="rating-field">
+        <legend>Оцінка від 1 до 5 зірок</legend>
+        <div class="stars">
+          <label class="star-choice"><input type="radio" name="rating" value="1" aria-label="1 зірка" required><span class="star-icon" aria-hidden="true">★</span></label>
+          <label class="star-choice"><input type="radio" name="rating" value="2" aria-label="2 зірки"><span class="star-icon" aria-hidden="true">★</span></label>
+          <label class="star-choice"><input type="radio" name="rating" value="3" aria-label="3 зірки"><span class="star-icon" aria-hidden="true">★</span></label>
+          <label class="star-choice"><input type="radio" name="rating" value="4" aria-label="4 зірки"><span class="star-icon" aria-hidden="true">★</span></label>
+          <label class="star-choice"><input type="radio" name="rating" value="5" aria-label="5 зірок"><span class="star-icon" aria-hidden="true">★</span></label>
+        </div>
+      </fieldset>
+      <label for="feedback-comment">Коментар</label>
+      <textarea id="feedback-comment" maxlength="160" placeholder="Напишіть ваш відгук" required></textarea>
+      <button class="feedback-submit" type="submit">Залишити відгук</button>
+      <p id="feedback-message" class="feedback-message" role="status" aria-live="polite"></p>
+    </form>
+  </section>
+  <div id="comments-layer" class="comments-layer" aria-live="polite"></div>
+
   <script>
     const header = "/ip dhcp-server lease";
     let lines = [header];
-    let importedMacs = [];
+    let importedEntries = [];
     let importToken = 0;
+    let defaultComment = null;
 
     function setStatus(message, isError = false) {
       const status = document.getElementById("status");
@@ -169,23 +370,63 @@
       status.classList.toggle("error", isError);
     }
 
-    function parseMacAddresses(content) {
-      const unique = new Set();
+    function missingCommentCount() {
+      return importedEntries.filter(entry => !entry.originalComment || !entry.originalComment.trim()).length;
+    }
+
+    function formattedDefaultComment() {
+      const name = defaultComment.trim();
+      return name.startsWith("==") && name.endsWith("==") ? name : `==${name}==`;
+    }
+
+    function parseImportedEntries(content) {
+      const entries = [];
+      const byMac = new Map();
       const pattern = /\bmac-address\s*=\s*["']?([0-9a-f]{2}(?::[0-9a-f]{2}){5})(?=$|[\s;"'\\])/gi;
-      const activeLines = content.split(/\r?\n/).filter(line => !line.trimStart().startsWith("#"));
-      for (const line of activeLines) {
-        for (const match of line.matchAll(pattern)) unique.add(match[1].toUpperCase());
+      const logicalLines = [];
+      let pending = "";
+      for (const line of content.split(/\r?\n/)) {
+        if (line.trimStart().startsWith("#")) continue;
+        const continued = /\\\s*$/.test(line);
+        pending += (pending ? " " : "") + line.replace(/\\\s*$/, "");
+        if (!continued) {
+          logicalLines.push(pending);
+          pending = "";
+        }
       }
-      if (unique.size === 0) {
+      if (pending) logicalLines.push(pending);
+
+      function originalComment(line) {
+        const match = line.match(/\bcomment\s*=\s*(?:"((?:\\.|[^"\\])*)"|([^\s;\\]+))/i);
+        return match ? (match[1] ?? match[2]) : null;
+      }
+
+      function addEntry(mac, comment) {
+        const existing = byMac.get(mac);
+        if (existing) {
+          if (!existing.originalComment && comment) existing.originalComment = comment;
+          return;
+        }
+        const entry = { mac, originalComment: comment };
+        byMac.set(mac, entry);
+        entries.push(entry);
+      }
+
+      for (const line of logicalLines) {
+        const comment = originalComment(line);
+        for (const match of line.matchAll(pattern)) addEntry(match[1].toUpperCase(), comment);
+      }
+      if (entries.length === 0) {
         const fallback = /(?:^|[^0-9a-f:.-])((?:[0-9a-f]{2}:){5}[0-9a-f]{2}|(?:[0-9a-f]{2}-){5}[0-9a-f]{2}|(?:[0-9a-f]{4}\.){2}[0-9a-f]{4})(?![0-9a-f:.-])/gi;
-        for (const line of activeLines) {
+        for (const line of logicalLines) {
+          const comment = originalComment(line);
           for (const match of line.matchAll(fallback)) {
             const hex = match[1].replace(/[:.-]/g, "").toUpperCase();
-            unique.add(hex.match(/.{2}/g).join(":"));
+            addEntry(hex.match(/.{2}/g).join(":"), comment);
           }
         }
       }
-      return [...unique];
+      return entries;
     }
 
     function parseIpv4(value) {
@@ -209,36 +450,37 @@
       const preview = document.getElementById("ip-preview");
       preview.textContent = "";
       preview.classList.remove("error");
-      if (!importedMacs.length) return;
+      if (!importedEntries.length) return;
       const ip = document.getElementById("ip").value.trim();
       if (!ip) {
-        preview.textContent = `Введіть першу IP-адресу для ${importedMacs.length} MAC-адрес.`;
+        preview.textContent = `Введіть першу IP-адресу для ${importedEntries.length} MAC-адрес.`;
         return;
       }
       const start = parseIpv4(ip);
-      if (start === null || start + importedMacs.length - 1 > 0xFFFFFFFF) {
+      if (start === null || start + importedEntries.length - 1 > 0xFFFFFFFF) {
         preview.textContent = "Введіть коректну початкову IP-адресу.";
         preview.classList.add("error");
         return;
       }
-      preview.textContent = `Діапазон для ${importedMacs.length} MAC-адрес: ${formatIpv4(start)}–${formatIpv4(start + importedMacs.length - 1)}.`;
+      preview.textContent = `Діапазон для ${importedEntries.length} MAC-адрес: ${formatIpv4(start)}–${formatIpv4(start + importedEntries.length - 1)}.`;
     }
 
-    function leaseLine(ip, comment, mac, server) {
-      return `add address=${ip} comment="==${comment}==" mac-address=${mac} server=${server}`;
+    function leaseLine(ip, formattedComment, mac, server) {
+      return `add address=${ip} comment="${formattedComment}" mac-address=${mac} server=${server}`;
     }
 
     function renderMacList() {
       const list = document.getElementById("mac-list");
       const items = document.getElementById("mac-list-items");
       items.replaceChildren();
-      list.hidden = importedMacs.length === 0;
-      if (!importedMacs.length) return;
-      document.getElementById("mac-list-title").textContent = `Список MAC-адрес (${importedMacs.length})`;
+      list.hidden = importedEntries.length === 0;
+      if (!importedEntries.length) return;
+      document.getElementById("mac-list-title").textContent = `Список MAC-адрес (${importedEntries.length})`;
       const fragment = document.createDocumentFragment();
-      for (const mac of importedMacs) {
+      for (const entry of importedEntries) {
         const item = document.createElement("li");
-        item.textContent = mac;
+        item.textContent = entry.originalComment
+          ? `${entry.mac} — ${entry.originalComment}` : `${entry.mac} — без коментаря`;
         fragment.appendChild(item);
       }
       items.appendChild(fragment);
@@ -262,23 +504,82 @@
         return;
       }
       if (token !== importToken) return;
-      const macs = parseMacAddresses(content);
-      if (!macs.length) {
+      const entries = parseImportedEntries(content);
+      if (!entries.length) {
         setStatus("У файлі не знайдено MAC-адрес.", true);
         return;
       }
-      importedMacs = macs;
+      importedEntries = entries;
+      defaultComment = null;
       lines = [header];
       renderOutput();
       renderMacList();
       const macInput = document.getElementById("mac");
-      macInput.value = `Знайдено ${macs.length} MAC-адрес`;
+      macInput.value = `Знайдено ${entries.length} MAC-адрес`;
       macInput.readOnly = true;
+      const commentCount = entries.filter(entry => entry.originalComment && entry.originalComment.trim()).length;
+      const preserve = document.getElementById("preserve-comments");
+      preserve.checked = false;
+      preserve.disabled = commentCount === 0;
+      const tooltip = commentCount ? "зберегти оригінальні коментарі з файлу" : "коментарів не знайдено";
+      preserve.title = tooltip;
+      document.getElementById("original-comment-option").title = tooltip;
+      document.getElementById("comment").disabled = false;
       document.getElementById("ip").placeholder = "192.168.10.2";
       document.querySelector(".add-btn").textContent = "Згенерувати";
-      setStatus(`Імпортовано ${macs.length} MAC-адрес. Введіть тільки першу IP-адресу.`);
+      setStatus(`Імпортовано ${entries.length} MAC-адрес і ${commentCount} коментарів. Введіть тільки першу IP-адресу.`);
       updateIpPreview();
     }
+
+    function toggleOriginalComments() {
+      const preserve = document.getElementById("preserve-comments");
+      document.getElementById("comment").disabled = preserve.checked;
+      if (preserve.checked) {
+        const missing = missingCommentCount();
+        if (missing) {
+          const dialog = document.getElementById("missing-comment-dialog");
+          const input = document.getElementById("default-comment-name");
+          document.getElementById("missing-comment-count").textContent =
+            `У файлі ${missing} MAC-адрес без коментаря. Ця назва буде використана для них.`;
+          input.value = defaultComment ?? "Без назви";
+          input.setCustomValidity("");
+          setStatus("Введіть назву для MAC-адрес без коментаря.");
+          dialog.showModal();
+          input.select();
+        } else {
+          setStatus("Оригінальні коментарі збережуться для всіх MAC-адрес.");
+        }
+      } else {
+        setStatus("Введіть спільний коментар для всіх MAC-адрес.");
+      }
+    }
+
+    const missingCommentDialog = document.getElementById("missing-comment-dialog");
+    const defaultCommentInput = document.getElementById("default-comment-name");
+    document.getElementById("missing-comment-form").addEventListener("submit", event => {
+      event.preventDefault();
+      const name = defaultCommentInput.value.trim();
+      if (!name || /["\\]/.test(name)) {
+        defaultCommentInput.setCustomValidity("Введіть назву без лапок і зворотної косої риски.");
+        defaultCommentInput.reportValidity();
+        return;
+      }
+      defaultComment = name;
+      missingCommentDialog.close();
+      setStatus(`Оригінальні коментарі збережуться; для ${missingCommentCount()} MAC-адрес без коментаря буде «${defaultComment}».`);
+    });
+    defaultCommentInput.addEventListener("input", () => defaultCommentInput.setCustomValidity(""));
+    function cancelDefaultComment() {
+      missingCommentDialog.close();
+      document.getElementById("preserve-comments").checked = false;
+      document.getElementById("comment").disabled = false;
+      setStatus("Збереження оригінальних коментарів скасовано. Введіть спільний коментар.");
+    }
+    document.getElementById("cancel-default-comment").addEventListener("click", cancelDefaultComment);
+    missingCommentDialog.addEventListener("cancel", event => {
+      event.preventDefault();
+      cancelDefaultComment();
+    });
 
     function renderOutput() {
       const output = document.getElementById("output");
@@ -310,34 +611,42 @@
       const comment = document.getElementById("comment").value.trim();
       const mac = document.getElementById("mac").value.trim();
       const server = document.getElementById("server").value.trim();
+      const preserveComments = document.getElementById("preserve-comments").checked;
 
-      if (!ip || !comment || !server || (!importedMacs.length && !mac)) {
+      if (!ip || (!preserveComments && !comment) || !server || (!importedEntries.length && !mac)) {
         setStatus("Будь ласка, заповніть всі поля!", true);
         return;
       }
 
-      if (importedMacs.length) {
+      if (importedEntries.length) {
+        if (preserveComments && missingCommentCount() && !defaultComment) {
+          toggleOriginalComments();
+          return;
+        }
         const start = parseIpv4(ip);
         if (start === null) {
           setStatus("Введіть коректну початкову IP-адресу, наприклад 192.168.10.2.", true);
           return;
         }
-        const last = start + importedMacs.length - 1;
+        const last = start + importedEntries.length - 1;
         if (last > 0xFFFFFFFF) {
           setStatus("Для всіх MAC-адрес не вистачає адрес IPv4 після вказаного IP.", true);
           return;
         }
         lines = [header];
-        importedMacs.forEach((address, index) => {
-          lines.push(leaseLine(formatIpv4(start + index), comment, address, server));
+        importedEntries.forEach((entry, index) => {
+          const formattedComment = preserveComments
+            ? (entry.originalComment && entry.originalComment.trim() ? entry.originalComment : formattedDefaultComment())
+            : `==${comment}==`;
+          lines.push(leaseLine(formatIpv4(start + index), formattedComment, entry.mac, server));
         });
-        setStatus(`Згенеровано ${importedMacs.length} записів: ${formatIpv4(start)}-${formatIpv4(last)}.`);
+        setStatus(`Згенеровано ${importedEntries.length} записів: ${formatIpv4(start)}-${formatIpv4(last)}.`);
       } else {
         if (parseIpv4(ip) === null || !/^[0-9a-f]{2}(?::[0-9a-f]{2}){5}$/i.test(mac)) {
           setStatus("Введіть коректні IP та MAC-адресу.", true);
           return;
         }
-        lines.push(leaseLine(ip, comment, mac, server));
+        lines.push(leaseLine(ip, `==${comment}==`, mac, server));
         setStatus("Запис додано.");
       }
 
@@ -346,10 +655,17 @@
 
     function resetFields() {
       importToken++;
-      importedMacs = [];
+      importedEntries = [];
+      defaultComment = null;
       for (const id of ["ip", "comment", "mac", "server"]) {
         document.getElementById(id).value = "";
       }
+      const preserve = document.getElementById("preserve-comments");
+      preserve.checked = false;
+      preserve.disabled = true;
+      preserve.title = "коментарів не знайдено";
+      document.getElementById("original-comment-option").title = "коментарів не знайдено";
+      document.getElementById("comment").disabled = false;
       document.getElementById("mac").readOnly = false;
       document.getElementById("mac-file").value = "";
       document.getElementById("ip").placeholder = "192.168.10.22";
@@ -377,5 +693,6 @@
     // показати стартовий рядок
     renderOutput();
   </script>
+  <script src="./feedback.js" defer></script>
 </body>
 </html>
