@@ -385,16 +385,24 @@
       const pattern = /\bmac-address\s*=\s*["']?([0-9a-f]{2}(?::[0-9a-f]{2}){5})(?=$|[\s;"'\\])/gi;
       const logicalLines = [];
       let pending = "";
+      let precedingComment = null;
       for (const line of content.split(/\r?\n/)) {
-        if (line.trimStart().startsWith("#")) continue;
+        const trimmed = line.trim();
+        if (!pending && trimmed.startsWith("#")) continue;
+        if (!pending && trimmed.startsWith(";;;")) {
+          precedingComment = trimmed.slice(3).trim() || null;
+          continue;
+        }
+        if (!pending && !trimmed) continue;
         const continued = /\\\s*$/.test(line);
         pending += (pending ? " " : "") + line.replace(/\\\s*$/, "");
         if (!continued) {
-          logicalLines.push(pending);
+          logicalLines.push({ text: pending, precedingComment });
           pending = "";
+          precedingComment = null;
         }
       }
-      if (pending) logicalLines.push(pending);
+      if (pending) logicalLines.push({ text: pending, precedingComment });
 
       function originalComment(line) {
         const match = line.match(/\bcomment\s*=\s*(?:"((?:\\.|[^"\\])*)"|([^\s;\\]+))/i);
@@ -412,15 +420,15 @@
         entries.push(entry);
       }
 
-      for (const line of logicalLines) {
-        const comment = originalComment(line);
-        for (const match of line.matchAll(pattern)) addEntry(match[1].toUpperCase(), comment);
+      for (const { text, precedingComment } of logicalLines) {
+        const comment = originalComment(text) || precedingComment;
+        for (const match of text.matchAll(pattern)) addEntry(match[1].toUpperCase(), comment);
       }
       if (entries.length === 0) {
         const fallback = /(?:^|[^0-9a-f:.-])((?:[0-9a-f]{2}:){5}[0-9a-f]{2}|(?:[0-9a-f]{2}-){5}[0-9a-f]{2}|(?:[0-9a-f]{4}\.){2}[0-9a-f]{4})(?![0-9a-f:.-])/gi;
-        for (const line of logicalLines) {
-          const comment = originalComment(line);
-          for (const match of line.matchAll(fallback)) {
+        for (const { text, precedingComment } of logicalLines) {
+          const comment = originalComment(text) || precedingComment;
+          for (const match of text.matchAll(fallback)) {
             const hex = match[1].replace(/[:.-]/g, "").toUpperCase();
             addEntry(hex.match(/.{2}/g).join(":"), comment);
           }
