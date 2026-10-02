@@ -469,6 +469,68 @@
       return `add address=${ip} comment="${formattedComment}" mac-address=${mac} server=${server}`;
     }
 
+    async function readImportedText(file) {
+      const bytes = await file.arrayBuffer();
+      const signature = new Uint8Array(bytes, 0, Math.min(bytes.byteLength, 2));
+      if (signature[0] === 0xFF && signature[1] === 0xFE) {
+        return new TextDecoder("utf-16le").decode(bytes);
+      }
+      if (signature[0] === 0xFE && signature[1] === 0xFF) {
+        return new TextDecoder("utf-16be").decode(bytes);
+      }
+      try {
+        return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      } catch {
+        return new TextDecoder("windows-1251").decode(bytes);
+      }
+    }
+
+    function decodeEscapedCyrillic(comment) {
+      return comment.replace(/(?:\\[0-9a-f]{2})+/gi, sequence => {
+        const bytes = Uint8Array.from(sequence.match(/[0-9a-f]{2}/gi), hex => parseInt(hex, 16));
+        const candidates = [];
+        try {
+          candidates.push(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+        } catch { /* These bytes may use another encoding. */ }
+        if (bytes.length >= 2 && bytes.length % 2 === 0) {
+          const pairs = Array.from({ length: bytes.length / 2 }, (_, index) =>
+            [bytes[index * 2], bytes[index * 2 + 1]]);
+          if (pairs.every(([, high]) => high <= 5) && pairs.some(([, high]) => high >= 4)) {
+            candidates.push(new TextDecoder("utf-16le").decode(bytes));
+          }
+          if (pairs.every(([high]) => high <= 5) && pairs.some(([high]) => high >= 4)) {
+            candidates.push(new TextDecoder("utf-16be").decode(bytes));
+          }
+        }
+        candidates.push(new TextDecoder("windows-1251").decode(bytes));
+        const decoded = candidates.find(value => /[\u0400-\u052f]/u.test(value) && !/[\u0000-\u001f]/u.test(value));
+        return decoded ? decoded.replace(/["\\$]/g, "\\$&") : sequence;
+      });
+    }
+
+    function transliterateComment(comment) {
+      const letters = {
+        а: "a", б: "b", в: "v", г: "h", ґ: "g", д: "d", е: "e", ж: "zh",
+        з: "z", и: "y", і: "i", к: "k", л: "l", м: "m", н: "n", о: "o",
+        п: "p", р: "r", с: "s", т: "t", у: "u", ф: "f", х: "kh", ц: "ts",
+        ч: "ch", ш: "sh", щ: "shch", ь: "", ы: "y", э: "e", ё: "yo",
+        ъ: "", ў: "u"
+      };
+      const contextual = {
+        є: ["ye", "ie"], ї: ["yi", "i"], й: ["y", "i"], ю: ["yu", "iu"], я: ["ya", "ia"]
+      };
+      return decodeEscapedCyrillic(comment).replace(/[\u0400-\u052f]/gu, (letter, index, value) => {
+        const lower = letter.toLowerCase();
+        const atWordStart = index === 0 || !/[A-Za-z\u0400-\u052f]/u.test(value[index - 1]);
+        const latin = contextual[lower]?.[atWordStart ? 0 : 1] ?? letters[lower] ?? "?";
+        if (letter === lower) return latin;
+        if (!latin) return "";
+        const next = value[index + 1];
+        return next && /[\u0400-\u052f]/u.test(next) && next === next.toUpperCase()
+          ? latin.toUpperCase() : latin[0].toUpperCase() + latin.slice(1);
+      });
+    }
+
     function renderMacList() {
       const list = document.getElementById("mac-list");
       const items = document.getElementById("mac-list-items");
@@ -498,7 +560,7 @@
       }
       let content;
       try {
-        content = await file.text();
+        content = await readImportedText(file);
       } catch (error) {
         if (token === importToken) setStatus("Не вдалося прочитати файл.", true);
         return;
@@ -638,7 +700,7 @@
           const formattedComment = preserveComments
             ? (entry.originalComment && entry.originalComment.trim() ? entry.originalComment : formattedDefaultComment())
             : `==${comment}==`;
-          lines.push(leaseLine(formatIpv4(start + index), formattedComment, entry.mac, server));
+          lines.push(leaseLine(formatIpv4(start + index), transliterateComment(formattedComment), entry.mac, server));
         });
         setStatus(`Згенеровано ${importedEntries.length} записів: ${formatIpv4(start)}-${formatIpv4(last)}.`);
       } else {
@@ -646,7 +708,7 @@
           setStatus("Введіть коректні IP та MAC-адресу.", true);
           return;
         }
-        lines.push(leaseLine(ip, `==${comment}==`, mac, server));
+        lines.push(leaseLine(ip, transliterateComment(`==${comment}==`), mac, server));
         setStatus("Запис додано.");
       }
 
